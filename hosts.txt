@@ -1,0 +1,2 @@
+skel.ru.is
+scanme.nmap.org
