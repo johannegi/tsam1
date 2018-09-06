@@ -96,7 +96,8 @@ int main(int argc, char *argv[])
 	}
 	//Close The File
 	inPorts.close();
-
+		
+	//shuffle the vector so the ports will be tested in random order
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 	std::default_random_engine rng (seed);
 	std::shuffle(ports.begin(), ports.end(), rng);
