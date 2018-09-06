@@ -64,15 +64,9 @@ unsigned short csum(unsigned short *ptr,int nbytes)
     return(answer);
 }
 
-int main(int argc, char *argv[])
+void getPorts()
 {
-
-	if (argc < 1) {
-   		fprintf(stderr,"usage %s hostname\n", argv[0]);
-    	exit(0);
-	}
-
-/*****************************GET PORTS*******************************/
+	/*****************************GET PORTS*******************************/
 	std::vector<std::string> ports;
 	std::string portFile = "ports.txt";
 
@@ -83,7 +77,7 @@ int main(int argc, char *argv[])
 	if(!inPorts)
 	{
 		std::cerr << "Cannot open the File : "<<portFile<<std::endl;
-		return false;
+		exit(1);
 	}
  
 	
@@ -101,19 +95,23 @@ int main(int argc, char *argv[])
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 	std::default_random_engine rng (seed);
 	std::shuffle(ports.begin(), ports.end(), rng);
+}
 
-/*******************************GET Clients*******************************/
+void getHosts()
+{
+	/*******************************GET Clients*******************************/
 
 	std::vector<std::string> hosts;
 	std::string hostFile = "hosts.txt";
 
 	std::ifstream inHosts(hostFile.c_str());
+	std::string tmpLine;
  
 	// Check if object is valid
 	if(!inHosts)
 	{
 		std::cerr << "Cannot open the File : "<<hostFile<<std::endl;
-		return false;
+		exit(1);
 	}
  
 	// Read the next line from File untill it reaches the end.
@@ -125,24 +123,32 @@ int main(int argc, char *argv[])
 	}
 	//Close The File
 	inHosts.close();
+}
+
+int main(int argc, char *argv[])
+{
+
+	if (argc < 1) {
+   		fprintf(stderr,"usage %s hostname\n", argv[0]);
+    	exit(0);
+	}
 
 
 /*******************************CREATE IP Header**************************/	
 
-//Create a raw socket
     //Create a raw socket
-    int s = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
-     
-    if(s == -1)
+    int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
+    
+    
+    if(write_socket == -1)
     {
-        //socket creation failed, may be because of non-root privileges
-        perror("Failed to create socket");
+        error("Failed to create write socket");
         exit(1);
     }
 
      
     //Datagram to represent the packet
-    char datagram[4096] , source_ip[32] , *data , *pseudogram;
+    char datagram[4096] , source_ip[32], *pseudogram;
      
     //zero out the packet buffer
     memset (datagram, 0, 4096);
@@ -155,21 +161,19 @@ int main(int argc, char *argv[])
     struct sockaddr_in sin;
     struct pseudo_header psh;
      
-    //Data part
-    data = datagram + sizeof(struct iphdr) + sizeof(struct tcphdr);
-    strcpy(data , "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
-     
     //some address resolution
-    strcpy(source_ip , "192.168.80.2");
+    strcpy(source_ip , "10.2.26.219");
     sin.sin_family = AF_INET;
-    sin.sin_port = htons(90);
-    sin.sin_addr.s_addr = inet_addr ("1.2.3.4");
+    sin.sin_port = htons(3000);
+    //sin.sin_addr.s_addr = inet_addr ("130.208.243.61");
+    sin.sin_addr.s_addr = inet_addr ("45.33.32.156");
+    //sin.sin_addr.s_addr = inet_addr ("192.168.43.42");
      
     //Fill in the IP Header
     iph->ihl = 5;
     iph->version = 4;
     iph->tos = 0;
-    iph->tot_len = sizeof (struct iphdr) + sizeof (struct tcphdr) + strlen(data);
+    iph->tot_len = sizeof (struct iphdr) + sizeof (struct tcphdr);
     iph->id = htonl (54321); //Id of this packet
     iph->frag_off = 0;
     iph->ttl = 255;
@@ -183,12 +187,12 @@ int main(int argc, char *argv[])
      
     //TCP Header
     tcph->source = htons (1234);
-    tcph->dest = htons (90);
+    tcph->dest = htons (3000);
     tcph->seq = 0;
     tcph->ack_seq = 0;
     tcph->doff = 5;  //tcp header size
-    tcph->fin=0;
-    tcph->syn=1;
+    tcph->fin=1;
+    tcph->syn=0;
     tcph->rst=0;
     tcph->psh=0;
     tcph->ack=0;
@@ -202,13 +206,13 @@ int main(int argc, char *argv[])
     psh.dest_address = sin.sin_addr.s_addr;
     psh.placeholder = 0;
     psh.protocol = IPPROTO_TCP;
-    psh.tcp_length = htons(sizeof(struct tcphdr) + strlen(data) );
+    psh.tcp_length = htons(sizeof(struct tcphdr));
      
-    int psize = sizeof(struct pseudo_header) + sizeof(struct tcphdr) + strlen(data);
+    int psize = sizeof(struct pseudo_header) + sizeof(struct tcphdr);
     pseudogram = (char*)malloc(psize);
      
     memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
-    memcpy(pseudogram + sizeof(struct pseudo_header) , tcph , sizeof(struct tcphdr) + strlen(data));
+    memcpy(pseudogram + sizeof(struct pseudo_header) , tcph , sizeof(struct tcphdr));
      
     tcph->check = csum( (unsigned short*) pseudogram , psize);
      
@@ -216,19 +220,19 @@ int main(int argc, char *argv[])
     int one = 1;
     const int *val = &one;
      
-    if (setsockopt (s, IPPROTO_IP, IP_HDRINCL, val, sizeof (one)) < 0)
+    if (setsockopt (write_socket, IPPROTO_IP, IP_HDRINCL, val, sizeof (one)) < 0)
     {
-        perror("Error setting IP_HDRINCL");
+        error("Error setting IP_HDRINCL");
         exit(0);
     }
      
     //loop if you want to flood :)
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 1; ++i)
     {
         //Send the packet
-        if (sendto (s, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
+        if (sendto (write_socket, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
         {
-            perror("sendto failed");
+            error("sendto failed");
         }
         //Data send successfully
         else
@@ -236,42 +240,68 @@ int main(int argc, char *argv[])
             printf ("Packet Send. Length : %d \n" , iph->tot_len);
         }
 
+        int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
+        if(read_socket == -1)
+		{
+	    	error("Failed to create read socket");
+        	exit(1);
+		}
 
-        int read_sock = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
-    
-	    if(read_sock == -1)
-	    {
-	        error("\n raw socket creation for reading datalink frames failed \n");
-	    }
-
-        char read_buffer[60*1024] = {0};
+        char read_buffer[2000];
         ssize_t received_bytes;
-	    //usleep(10);
+	    usleep(1000000);
 	    socklen_t dsize = sizeof(sin);
-	    received_bytes=recv(read_sock, read_buffer , sizeof(read_buffer), 0);
-	    //received_bytes = polling_read(read_sock, 0, (sockaddr*) &destination, &dsize , read_buffer,1000, 5);
+	    received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
 	    iphdr* read_iphdr = (iphdr*) read_buffer;
 	   
 	    tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
-	   
+
 	    if( received_bytes < 0 )
 	    {
-	            error("\n\t recvfrom() failed. Error in reading \n");
+	            error("\n\t recv() error \n");
 	    }
 
 	    if(tcph->syn==1)
 	    {
-	    	printf("test");
-	    	if(read_tcphdr->syn==1)
+	    	if (read_tcphdr->syn==1)
 	    	{
-	    		printf("Open");
+	    		printf("syn open\n");
 	    	}
-	    	else if (read_tcphdr->rst==1)
+	    	else
 	    	{
-	    		printf("closed");
+	    		printf("syn closed\n");
+	    	}
+	    }
+	    else if(tcph->fin==1)
+	    {
+	    	
+	    	if (read_tcphdr->rst==1)
+	    	{
+	    		printf("fin closed\n");
+	    	}
+	    	else
+	    	{
+	    		printf("fin OPEN|FILTERED\n");
+	    	}
+	    }
+	    //if null flag
+	    else
+	    {
+	    	if (read_tcphdr->rst==1)
+	    	{
+	    		printf("null closed\n");
+	    	}
+	    	else
+	    	{
+	    		printf("null OPEN|FILTERED\n");
 	    	}
 	    }
 
+	    close(write_socket);
+	    close(write_socket);
+
+	    double f = (double)rand() / RAND_MAX;
+	    sleep(0.5 + f);
     }
 
 /*******************************START SCAN*********************************/	
