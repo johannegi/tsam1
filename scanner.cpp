@@ -64,11 +64,11 @@ unsigned short csum(unsigned short *ptr,int nbytes)
     return(answer);
 }
 
-void getPorts()
+std::vector<std::string> getPorts(std::string s)
 {
 	/*****************************GET PORTS*******************************/
 	std::vector<std::string> ports;
-	std::string portFile = "ports.txt";
+	std::string portFile = s;
 
 	std::ifstream inPorts(portFile.c_str());
 	std::string tmpLine;
@@ -95,14 +95,15 @@ void getPorts()
 	unsigned seed = std::chrono::system_clock::now().time_since_epoch().count();
 	std::default_random_engine rng (seed);
 	std::shuffle(ports.begin(), ports.end(), rng);
+    return ports;
 }
 
-void getHosts()
+std::vector<std::string> getHosts(std::string s)
 {
 	/*******************************GET Clients*******************************/
 
 	std::vector<std::string> hosts;
-	std::string hostFile = "hosts.txt";
+	std::string hostFile = s;
 
 	std::ifstream inHosts(hostFile.c_str());
 	std::string tmpLine;
@@ -123,6 +124,7 @@ void getHosts()
 	}
 	//Close The File
 	inHosts.close();
+    return hosts;
 }
 
 void scan()
@@ -300,11 +302,18 @@ void scan()
 
 int main(int argc, char *argv[])
 {
+    if (argc < 5) {
+       fprintf(stderr,"usage %s your ip address, hosts.txt, portst.txt, flag(S = syn, F = fin, N = null, X = xmas)\n", argv[0]);
+       exit(0);
+    }
 
-	if (argc < 1) {
-   		fprintf(stderr,"usage %s hostname\n", argv[0]);
-    	exit(0);
-	}
+    std::string hostsFile = argv[2];
+    std::string portsFile = argv[3];
+    std::string flag = argv[4];
+    std::vector<std::string> hosts = getHosts(hostsFile);
+    std::vector<std::string> Ports = getPorts(portsFile);
+
+    
 
 	scan();
 
