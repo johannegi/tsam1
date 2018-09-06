@@ -13,14 +13,8 @@
 #include <chrono>
 #include <algorithm>
 #include <random>
-
-#include<stdio.h> //for printf
-#include<string.h> //memset
-#include<sys/socket.h>    //for socket ofcourse
-#include<stdlib.h> //for exit(0);
-#include<errno.h> //For errno - the error number
-#include<netinet/tcp.h>   //Provides declarations for tcp header
-#include<netinet/ip.h>    //Provides declarations for ip header
+#include<netinet/tcp.h> 
+#include<netinet/ip.h> 
 #include <arpa/inet.h>
 
 void error(const char *msg)
@@ -100,7 +94,7 @@ std::vector<std::string> getPorts(std::string s)
 
 std::vector<std::string> getHosts(std::string s)
 {
-	/*******************************GET Clients*******************************/
+	/*******************************GET HOSTS*******************************/
 
 	std::vector<std::string> hosts;
 	std::string hostFile = s;
@@ -127,20 +121,55 @@ std::vector<std::string> getHosts(std::string s)
     return hosts;
 }
 
+void createIp(iphdr *iph, char *source_ip, sockaddr_in &sin, char *datagram)
+{
+	iph->ihl = 5;
+    iph->version = 4;
+    iph->tos = 0;
+    iph->tot_len = sizeof (struct iphdr) + sizeof (struct tcphdr);
+    iph->id = htonl (54321); //Id of this packet
+    iph->frag_off = 0;
+    iph->ttl = 255;
+    iph->protocol = IPPROTO_TCP;
+    iph->check = 0;      //Set to 0 before calculating checksum
+    iph->saddr = inet_addr ( source_ip );    //Spoof the source ip address
+    iph->daddr = sin.sin_addr.s_addr;
+     
+    //Ip checksum
+    iph->check = csum ((unsigned short *) datagram, iph->tot_len);
+}
+
+void createTcp(tcphdr *tcph)
+{
+	//TCP Header
+    tcph->source = htons (1234);
+    tcph->dest = htons (3000);
+    tcph->seq = 0;
+    tcph->ack_seq = 0;
+    tcph->doff = 5;  //tcp header size
+    tcph->fin=0;
+    tcph->syn=1;
+    tcph->rst=0;
+    tcph->psh=0;
+    tcph->ack=0;
+    tcph->urg=0;
+    tcph->window = htons (5840); /* maximum allowed window size */
+    tcph->check = 0; //leave checksum 0 now, filled later by pseudo header
+    tcph->urg_ptr = 0;
+}
+
 void scan()
 {
 	/*******************************CREATE IP Header**************************/	
 
     //Create a raw socket
     int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
+    int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);   
     
-    
-    if(write_socket == -1)
+    if(write_socket == -1 || read_socket == -1)
     {
-        error("Failed to create write socket");
-        exit(1);
+        error("Failed to create socket");
     }
-
      
     //Datagram to represent the packet
     char datagram[4096] , source_ip[32], *pseudogram;
@@ -160,42 +189,12 @@ void scan()
     strcpy(source_ip , "10.2.26.219");
     sin.sin_family = AF_INET;
     sin.sin_port = htons(3000);
-    //sin.sin_addr.s_addr = inet_addr ("130.208.243.61");
     sin.sin_addr.s_addr = inet_addr ("45.33.32.156");
-    //sin.sin_addr.s_addr = inet_addr ("192.168.43.42");
      
-    //Fill in the IP Header
-    iph->ihl = 5;
-    iph->version = 4;
-    iph->tos = 0;
-    iph->tot_len = sizeof (struct iphdr) + sizeof (struct tcphdr);
-    iph->id = htonl (54321); //Id of this packet
-    iph->frag_off = 0;
-    iph->ttl = 255;
-    iph->protocol = IPPROTO_TCP;
-    iph->check = 0;      //Set to 0 before calculating checksum
-    iph->saddr = inet_addr ( source_ip );    //Spoof the source ip address
-    iph->daddr = sin.sin_addr.s_addr;
-     
-    //Ip checksum
-    iph->check = csum ((unsigned short *) datagram, iph->tot_len);
-     
-    //TCP Header
-    tcph->source = htons (1234);
-    tcph->dest = htons (3000);
-    tcph->seq = 0;
-    tcph->ack_seq = 0;
-    tcph->doff = 5;  //tcp header size
-    tcph->fin=1;
-    tcph->syn=0;
-    tcph->rst=0;
-    tcph->psh=0;
-    tcph->ack=0;
-    tcph->urg=0;
-    tcph->window = htons (5840); /* maximum allowed window size */
-    tcph->check = 0; //leave checksum 0 now, filled later by pseudo header
-    tcph->urg_ptr = 0;
-     
+    //Fill in the IP and TCP Header
+    createIp(iph, source_ip, sin, datagram);
+    createTcp(tcph);
+  
     //Now the TCP checksum
     psh.source_address = inet_addr( source_ip );
     psh.dest_address = sin.sin_addr.s_addr;
@@ -218,86 +217,74 @@ void scan()
     if (setsockopt (write_socket, IPPROTO_IP, IP_HDRINCL, val, sizeof (one)) < 0)
     {
         error("Error setting IP_HDRINCL");
-        exit(0);
     }
      
-    //loop if you want to flood :)
-    for (int i = 0; i < 1; ++i)
+    //Send the packet
+    if (sendto (write_socket, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
     {
-        //Send the packet
-        if (sendto (write_socket, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
-        {
-            error("sendto failed");
-        }
-        //Data send successfully
-        else
-        {
-            printf ("Packet Send. Length : %d \n" , iph->tot_len);
-        }
-
-        int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);
-        if(read_socket == -1)
-		{
-	    	error("Failed to create read socket");
-        	exit(1);
-		}
-
-        char read_buffer[2000];
-        ssize_t received_bytes;
-	    usleep(1000000);
-	    socklen_t dsize = sizeof(sin);
-	    received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
-	    iphdr* read_iphdr = (iphdr*) read_buffer;
-	   
-	    tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
-
-	    if( received_bytes < 0 )
-	    {
-	            error("\n\t recv() error \n");
-	    }
-
-	    if(tcph->syn==1)
-	    {
-	    	if (read_tcphdr->syn==1)
-	    	{
-	    		printf("syn open\n");
-	    	}
-	    	else
-	    	{
-	    		printf("syn closed\n");
-	    	}
-	    }
-	    else if(tcph->fin==1)
-	    {
-	    	
-	    	if (read_tcphdr->rst==1)
-	    	{
-	    		printf("fin closed\n");
-	    	}
-	    	else
-	    	{
-	    		printf("fin OPEN|FILTERED\n");
-	    	}
-	    }
-	    //if null flag
-	    else
-	    {
-	    	if (read_tcphdr->rst==1)
-	    	{
-	    		printf("null closed\n");
-	    	}
-	    	else
-	    	{
-	    		printf("null OPEN|FILTERED\n");
-	    	}
-	    }
-
-	    close(write_socket);
-	    close(write_socket);
-
-	    double f = (double)rand() / RAND_MAX;
-	    sleep(0.5 + f);
+        error("sendto failed");
     }
+    else
+    {
+        printf ("Packet Send. Length : %d \n" , iph->tot_len);
+    }
+
+    char read_buffer[2000];
+    ssize_t received_bytes;
+    usleep(10);
+    socklen_t dsize = sizeof(sin);
+    received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
+    iphdr* read_iphdr = (iphdr*) read_buffer;
+   
+    tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
+
+    if( received_bytes < 0 )
+    {
+            error("\n\t recv() error \n");
+    }
+
+    if(tcph->syn==1)
+    {
+    	if (read_tcphdr->syn==1)
+    	{
+    		printf("syn open\n");
+    	}
+    	else
+    	{
+    		printf("syn closed\n");
+    	}
+    }
+    else if(tcph->fin==1)
+    {
+    	
+    	if (read_tcphdr->rst==1)
+    	{
+    		printf("fin closed\n");
+    	}
+    	else
+    	{
+    		printf("fin OPEN|FILTERED\n");
+    	}
+    }
+    //if null flag
+    else
+    {
+    	if (read_tcphdr->rst==1)
+    	{
+    		printf("null closed\n");
+    	}
+    	else
+    	{
+    		printf("null OPEN|FILTERED\n");
+    	}
+    }
+
+    close(write_socket);
+    close(write_socket);
+
+    double f = (double)rand() / RAND_MAX;
+    sleep(0.5 + f);
+
 }
 
 int main(int argc, char *argv[])
