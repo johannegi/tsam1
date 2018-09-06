@@ -158,7 +158,7 @@ void createTcp(tcphdr *tcph)
     tcph->urg_ptr = 0;
 }
 
-void scan()
+void scan(int fin, int syn, int push , int urg, std::string flag)
 {
 	/*******************************CREATE IP Header**************************/	
 
@@ -294,15 +294,37 @@ int main(int argc, char *argv[])
        exit(0);
     }
 
+    std::string userIp = argv[1];
     std::string hostsFile = argv[2];
     std::string portsFile = argv[3];
     std::string flag = argv[4];
     std::vector<std::string> hosts = getHosts(hostsFile);
     std::vector<std::string> Ports = getPorts(portsFile);
 
-    
+    if (flag == "S")
+    {
+        scan(1, 1, 1, 0, flag);
+    }
+    else if (flag == "F")
+    {
+        scan(1, 1, 1, 0, flag);
+        
+    }
+    else if (flag == "N")
+    {
+        scan(1, 1, 1, 0, flag);
+        
+    }
+    else if (flag == "X")
+    {
+        scan(1, 1, 1, 0, flag);
+        
+    }
+    else{
+            printf("error\n");
+    }
 
-	scan();
+	
 
     return 0;
 }
