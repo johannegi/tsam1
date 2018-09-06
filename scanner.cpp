@@ -125,16 +125,9 @@ void getHosts()
 	inHosts.close();
 }
 
-int main(int argc, char *argv[])
+void scan()
 {
-
-	if (argc < 1) {
-   		fprintf(stderr,"usage %s hostname\n", argv[0]);
-    	exit(0);
-	}
-
-
-/*******************************CREATE IP Header**************************/	
+	/*******************************CREATE IP Header**************************/	
 
     //Create a raw socket
     int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
@@ -303,10 +296,17 @@ int main(int argc, char *argv[])
 	    double f = (double)rand() / RAND_MAX;
 	    sleep(0.5 + f);
     }
+}
 
-/*******************************START SCAN*********************************/	
+int main(int argc, char *argv[])
+{
 
+	if (argc < 1) {
+   		fprintf(stderr,"usage %s hostname\n", argv[0]);
+    	exit(0);
+	}
 
-    
+	scan();
+
     return 0;
 }
