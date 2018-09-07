@@ -1,2 +1,2 @@
-skel.ru.is
-scanme.nmap.org
+130.208.243.61
+45.33.32.156

@@ -1,4 +1,4 @@
-/*for (int x = 0; x < hosts.size(); ++x)
+for (int x = 0; x < hosts.size(); ++x)
 	{
 		printf("HOST: %s \n", hosts[x].c_str());
 		for (int i = 0; i < ports.size(); ++i)
@@ -42,7 +42,7 @@
 		    else 
 		    {
 		    	printf("port %i is open\n", portno);
-		    }*/
+		    }
 
 
 /********************WAIT TIME******************************************/

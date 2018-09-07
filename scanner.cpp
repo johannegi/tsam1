@@ -139,158 +139,171 @@ void createIp(iphdr *iph, char *source_ip, sockaddr_in &sin, char *datagram)
     iph->check = csum ((unsigned short *) datagram, iph->tot_len);
 }
 
-void createTcp(tcphdr *tcph)
+void createTcp(tcphdr *tcph, int portNo, int syn, int fin, int push, int urg)
 {
 	//TCP Header
     tcph->source = htons (1234);
-    tcph->dest = htons (3000);
+    tcph->dest = htons (portNo);
     tcph->seq = 0;
     tcph->ack_seq = 0;
     tcph->doff = 5;  //tcp header size
-    tcph->fin=0;
-    tcph->syn=1;
+    tcph->fin=fin;
+    tcph->syn=syn;
     tcph->rst=0;
-    tcph->psh=0;
+    tcph->psh=push;
     tcph->ack=0;
-    tcph->urg=0;
+    tcph->urg=urg;
     tcph->window = htons (5840); /* maximum allowed window size */
     tcph->check = 0; //leave checksum 0 now, filled later by pseudo header
     tcph->urg_ptr = 0;
 }
 
-void scan(int fin, int syn, int push , int urg, std::string flag)
+void scan(int syn, int fin, int push, int urg, std::string userIp, std::string flag, std::vector<std::string> hosts, std::vector<std::string> ports)
 {
 	/*******************************CREATE IP Header**************************/	
+	for (int i = 0; i < hosts.size(); ++i)
+	{
 
-    //Create a raw socket
-    int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
-    int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);   
-    
-    if(write_socket == -1 || read_socket == -1)
-    {
-        error("Failed to create socket");
-    }
-     
-    //Datagram to represent the packet
-    char datagram[4096] , source_ip[32], *pseudogram;
-     
-    //zero out the packet buffer
-    memset (datagram, 0, 4096);
-     
-    //IP header
-    struct iphdr *iph = (struct iphdr *) datagram;
-     
-    //TCP header
-    struct tcphdr *tcph = (struct tcphdr *) (datagram + sizeof (struct ip));
-    struct sockaddr_in sin;
-    struct pseudo_header psh;
-     
-    //some address resolution
-    strcpy(source_ip , "10.2.26.219");
-    sin.sin_family = AF_INET;
-    sin.sin_port = htons(3000);
-    sin.sin_addr.s_addr = inet_addr ("45.33.32.156");
-     
-    //Fill in the IP and TCP Header
-    createIp(iph, source_ip, sin, datagram);
-    createTcp(tcph);
-  
-    //Now the TCP checksum
-    psh.source_address = inet_addr( source_ip );
-    psh.dest_address = sin.sin_addr.s_addr;
-    psh.placeholder = 0;
-    psh.protocol = IPPROTO_TCP;
-    psh.tcp_length = htons(sizeof(struct tcphdr));
-     
-    int psize = sizeof(struct pseudo_header) + sizeof(struct tcphdr);
-    pseudogram = (char*)malloc(psize);
-     
-    memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
-    memcpy(pseudogram + sizeof(struct pseudo_header) , tcph , sizeof(struct tcphdr));
-     
-    tcph->check = csum( (unsigned short*) pseudogram , psize);
-     
-    //IP_HDRINCL to tell the kernel that headers are included in the packet
-    int one = 1;
-    const int *val = &one;
-     
-    if (setsockopt (write_socket, IPPROTO_IP, IP_HDRINCL, val, sizeof (one)) < 0)
-    {
-        error("Error setting IP_HDRINCL");
-    }
-     
-    //Send the packet
-    if (sendto (write_socket, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
-    {
-        error("sendto failed");
-    }
-    else
-    {
-        printf ("Packet Send. Length : %d \n" , iph->tot_len);
-    }
+		printf("\nHost: %s\n\n", hosts[i].c_str());
+		for (int x = 0; x < ports.size(); ++x)
+		{
+			int portNo = stoi(ports[x]);
+			//Create a raw socket
+		    int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
+		    int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);   
+		    
+		    if(write_socket == -1 || read_socket == -1)
+		    {
+		        error("Failed to create socket");
+		    }
+		     
+		    //Datagram to represent the packet
+		    char datagram[4096] , source_ip[32], *pseudogram;
+		    memset (datagram, 0, 4096);
+		     
+		    //IP header
+		    struct iphdr *iph = (struct iphdr *) datagram;
+		     
+		    //TCP header
+		    struct tcphdr *tcph = (struct tcphdr *) (datagram + sizeof (struct ip));
+		    struct sockaddr_in sin;
+		    struct pseudo_header psh;
+		     
+		    //some address resolution
+		    strcpy(source_ip , userIp.c_str());
+		    sin.sin_family = AF_INET;
+		    sin.sin_addr.s_addr = inet_addr (hosts[i].c_str());
 
-    char read_buffer[2000];
-    ssize_t received_bytes;
-    usleep(10);
-    socklen_t dsize = sizeof(sin);
-    received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
-    iphdr* read_iphdr = (iphdr*) read_buffer;
-   
-    tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
+		    sin.sin_port = htons(stoi(ports[x]));
+		     
+		    //Fill in the IP and TCP Header
+		    createIp(iph, source_ip, sin, datagram);
+		    createTcp(tcph, portNo, syn, fin, push, urg);
+		  
+		    //Now the TCP checksum
+		    psh.source_address = inet_addr( source_ip );
+		    psh.dest_address = sin.sin_addr.s_addr;
+		    psh.placeholder = 0;
+		    psh.protocol = IPPROTO_TCP;
+		    psh.tcp_length = htons(sizeof(struct tcphdr));
+		     
+		    int psize = sizeof(struct pseudo_header) + sizeof(struct tcphdr);
+		    pseudogram = (char*)malloc(psize);
+		     
+		    memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
+		    memcpy(pseudogram + sizeof(struct pseudo_header) , tcph , sizeof(struct tcphdr));
+		     
+		    tcph->check = csum( (unsigned short*) pseudogram , psize);
+		     
+		    //IP_HDRINCL to tell the kernel that headers are included in the packet
+		    int one = 1;
+		    const int *val = &one;
+		     
+		    if (setsockopt (write_socket, IPPROTO_IP, IP_HDRINCL, val, sizeof (one)) < 0)
+		    {
+		        error("Error setting IP_HDRINCL");
+		    }
+		     
+		    //Send the packet
+		    if (sendto (write_socket, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
+		    {
+		        error("sendto failed");
+		    }
 
-    if( received_bytes < 0 )
-    {
-            error("\n\t recv() error \n");
-    }
+		    char read_buffer[2000];
+		    ssize_t received_bytes;
+		    usleep(10);
+		    socklen_t dsize = sizeof(sin);
+		    received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
+		    iphdr* read_iphdr = (iphdr*) read_buffer;
+		   
+		    tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
 
-    if(tcph->syn==1)
-    {
-    	if (read_tcphdr->syn==1)
-    	{
-    		printf("syn open\n");
-    	}
-    	else
-    	{
-    		printf("syn closed\n");
-    	}
-    }
-    else if(tcph->fin==1)
-    {
-    	
-    	if (read_tcphdr->rst==1)
-    	{
-    		printf("fin closed\n");
-    	}
-    	else
-    	{
-    		printf("fin OPEN|FILTERED\n");
-    	}
-    }
-    //if null flag
-    else
-    {
-    	if (read_tcphdr->rst==1)
-    	{
-    		printf("null closed\n");
-    	}
-    	else
-    	{
-    		printf("null OPEN|FILTERED\n");
-    	}
-    }
+		    if( received_bytes < 0 )
+		    {
+		            error("\n\t recv() error \n");
+		    }
 
-    close(write_socket);
-    close(write_socket);
+		    if(flag == "S")
+		    {
+		    	if (read_tcphdr->syn==1)
+		    	{
+		    		printf("Port: %d open\n", portNo);
+		    	}
+		    	else
+		    	{
+		    		printf("Port: %d closed\n", portNo);
+		    	}
+		    }
+		    else if(flag == "F")
+		    {
+		    	
+		    	if (read_tcphdr->rst==1)
+		    	{
+		    		printf("Port: %d closed\n", portNo);
+		    	}
+		    	else
+		    	{
+		    		printf("Port: %d open|filtered\n", portNo);
+		    	}
+		    }
+		    else if(flag == "N")
+		    {
+		    	if (read_tcphdr->rst==1)
+		    	{
+		    		printf("Port: %d closed\n", portNo);
+		    	}
+		    	else
+		    	{
+		    		printf("Port: %d open|filtered\n", portNo);
+		    	}
+		    }
+		    else if(flag == "X")
+		    {
+		    	if (read_tcphdr->rst==1)
+		    	{
+		    		printf("Port: %d closed\n", portNo);
+		    	}
+		    	else
+		    	{
+		    		printf("Port: %d open|filtered\n", portNo);
+		    	}
+		    }
 
-    double f = (double)rand() / RAND_MAX;
-    sleep(0.5 + f);
+		    close(write_socket);
+		    close(write_socket);
+
+		    double f = (double)rand() / RAND_MAX;
+		    sleep(0.5 + f);
+		}
+	}
 
 }
 
 int main(int argc, char *argv[])
 {
     if (argc < 5) {
-       fprintf(stderr,"usage %s your ip address, hosts.txt, portst.txt, flag(S = syn, F = fin, N = null, X = xmas)\n", argv[0]);
+       fprintf(stderr,"usage %s your ip address, hosts.txt, ports.txt, flag(S = syn, F = fin, N = null, X = xmas)\n", argv[0]);
        exit(0);
     }
 
@@ -299,25 +312,25 @@ int main(int argc, char *argv[])
     std::string portsFile = argv[3];
     std::string flag = argv[4];
     std::vector<std::string> hosts = getHosts(hostsFile);
-    std::vector<std::string> Ports = getPorts(portsFile);
+    std::vector<std::string> ports = getPorts(portsFile);
 
     if (flag == "S")
     {
-        scan(1, 1, 1, 0, flag);
+        scan(1, 0, 0, 0, userIp, flag, hosts, ports);
     }
     else if (flag == "F")
     {
-        scan(1, 1, 1, 0, flag);
+        scan(0, 1, 0, 0, userIp, flag, hosts, ports);
         
     }
     else if (flag == "N")
     {
-        scan(1, 1, 1, 0, flag);
+        scan(0, 0, 0, 0, userIp, flag, hosts, ports);
         
     }
     else if (flag == "X")
     {
-        scan(1, 1, 1, 0, flag);
+        scan(0, 1, 1, 1, userIp, flag, hosts, ports);
         
     }
     else{
