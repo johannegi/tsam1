@@ -291,13 +291,12 @@ void scan(int syn, int fin, int push, int urg, std::string userIp, std::string f
 		    }
 
 		    close(write_socket);
-		    close(write_socket);
+		    close(read_socket);
 
 		    double f = (double)rand() / RAND_MAX;
 		    sleep(0.5 + f);
 		}
 	}
-
 }
 
 int main(int argc, char *argv[])
