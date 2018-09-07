@@ -13,9 +13,13 @@
 #include <chrono>
 #include <algorithm>
 #include <random>
-#include<netinet/tcp.h> 
-#include<netinet/ip.h> 
+#include <netinet/tcp.h> 
+#include <netinet/ip.h> 
 #include <arpa/inet.h>
+#include <thread>
+#include <mutex>
+
+std::mutex SEM;
 
 void error(const char *msg)
 {
@@ -158,22 +162,13 @@ void createTcp(tcphdr *tcph, int portNo, int syn, int fin, int push, int urg)
     tcph->urg_ptr = 0;
 }
 
-void scan(int syn, int fin, int push, int urg, std::string userIp, std::string flag, std::vector<std::string> hosts, std::vector<std::string> ports)
+void scanIP(int syn, int fin, int push, int urg, std::string userIp, std::string flag, std::vector<std::string> hosts, std::vector<std::string> ports, int i)
 {
-	/*******************************CREATE IP Header**************************/	
-	for (int i = 0; i < hosts.size(); ++i)
-	{
-		struct hostent *server;
-		server = gethostbyname(hosts[i].c_str());
-		if (server == NULL) {
-	        fprintf(stderr,"\n%s ERROR, no such host\n",hosts[i].c_str());
-	        continue;
-		}
-
-		printf("\nHost: %s\n\n", hosts[i].c_str());
+	printf("\nHost: %s\n\n", hosts[i].c_str());
 		for (int x = 0; x < ports.size(); ++x)
 		{
 			int portNo = stoi(ports[x]);
+			SEM.lock();
 			//Create a raw socket
 		    int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
 		    int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);   
@@ -194,15 +189,11 @@ void scan(int syn, int fin, int push, int urg, std::string userIp, std::string f
 		    struct tcphdr *tcph = (struct tcphdr *) (datagram + sizeof (struct ip));
 		    struct sockaddr_in sin;
 		    struct pseudo_header psh;
-
-		    bcopy((char *)server->h_addr, 
-		         (char *)&sin.sin_addr.s_addr,
-		         server->h_length);
 		     
 		    //some address resolution
 		    strcpy(source_ip , userIp.c_str());
 		    sin.sin_family = AF_INET;
-		    //sin.sin_addr.s_addr = inet_addr (hosts[i].c_str());
+		    sin.sin_addr.s_addr = inet_addr (hosts[i].c_str());
 
 		    sin.sin_port = htons(stoi(ports[x]));
 		     
@@ -228,14 +219,10 @@ void scan(int syn, int fin, int push, int urg, std::string userIp, std::string f
 		    //IP_HDRINCL to tell the kernel that headers are included in the packet
 		    int one = 1;
 		    const int *val = &one;
-		     
 		    if (setsockopt (write_socket, IPPROTO_IP, IP_HDRINCL, val, sizeof (one)) < 0)
 		    {
 		        error("Error setting IP_HDRINCL");
 		    }
-		    struct timeval tv;
-		    tv.tv_sec = 10;
-			setsockopt (read_socket, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&tv,sizeof(struct timeval)) != 0;
 		     
 		    //Send the packet
 		    if (sendto (write_socket, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
@@ -247,74 +234,84 @@ void scan(int syn, int fin, int push, int urg, std::string userIp, std::string f
 		    ssize_t received_bytes;
 		    usleep(10);
 		    socklen_t dsize = sizeof(sin);
-		    
 		    received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
-	    	iphdr* read_iphdr = (iphdr*) read_buffer;   
-			tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
-
+		    iphdr* read_iphdr = (iphdr*) read_buffer;
+		   
+		    tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
+			
 		    if( received_bytes < 0 )
 		    {
-		            error("\n\t timed out \n");
-		            break;
+		            error("\n\t recv() error \n");
 		    }
-		    else
+
+		    if(flag == "S")
 		    {
-		    	if(flag == "S")
-			    {
-			    	if (read_tcphdr->syn==1)
-			    	{
-			    		printf("Port: %d open\n", portNo);
-			    	}
-			    	else
-			    	{
-			    		printf("Port: %d closed\n", portNo);
-			    	}
-			    }
-			    else if(flag == "F")
-			    {
-			    	
-			    	if (read_tcphdr->rst==1)
-			    	{
-			    		printf("Port: %d closed\n", portNo);
-			    	}
-			    	else
-			    	{
-			    		printf("Port: %d open|filtered\n", portNo);
-			    	}
-			    }
-			    else if(flag == "N")
-			    {
-			    	if (read_tcphdr->rst==1)
-			    	{
-			    		printf("Port: %d closed\n", portNo);
-			    	}
-			    	else
-			    	{
-			    		printf("Port: %d open|filtered\n", portNo);
-			    	}
-			    }
-			    else if(flag == "X")
-			    {
-			    	if (read_tcphdr->rst==1)
-			    	{
-			    		printf("Port: %d closed\n", portNo);
-			    	}
-			    	else
-			    	{
-			    		printf("Port: %d open|filtered\n", portNo);
-			    	}
-			    }
-
-			    close(write_socket);
-			    close(read_socket);
-
-			    double f = (double)rand() / RAND_MAX;
-			    sleep(0.5 + f);	
+		    	if (read_tcphdr->syn==1)
+		    	{
+		    		printf("Port: %d open\t%s\n", portNo, hosts[i].c_str());
+		    	}
+		    	else
+		    	{
+		    		printf("Port: %d closed\t%s\n", portNo, hosts[i].c_str());
+		    	}
+		    }
+		    else if(flag == "F")
+		    {
+		    	
+		    	if (read_tcphdr->rst==1)
+		    	{
+		    		printf("Port: %d closed\n", portNo);
+		    	}
+		    	else
+		    	{
+		    		printf("Port: %d open|filtered\n", portNo);
+		    	}
+		    }
+		    else if(flag == "N")
+		    {
+		    	if (read_tcphdr->rst==1)
+		    	{
+		    		printf("Port: %d closed\n", portNo);
+		    	}
+		    	else
+		    	{
+		    		printf("Port: %d open|filtered\n", portNo);
+		    	}
+		    }
+		    else if(flag == "X")
+		    {
+		    	if (read_tcphdr->rst==1)
+		    	{
+		    		printf("Port: %d closed\n", portNo);
+		    	}
+		    	else
+		    	{
+		    		printf("Port: %d open|filtered\n", portNo);
+		    	}
 		    }
 
-		    
+		    close(write_socket);
+		    close(read_socket);
+			SEM.unlock();
+
+		    double f = (double)rand() / RAND_MAX;
+		    sleep(0.5 + f);
 		}
+}
+
+void scan(int syn, int fin, int push, int urg, std::string userIp, std::string flag, std::vector<std::string> hosts, std::vector<std::string> ports)
+{
+	std::vector<std::thread *> tasks;
+	/*******************************CREATE IP Header**************************/	
+	for (int i = 0; i < hosts.size(); ++i)
+	{
+		tasks.push_back(new std::thread(scanIP, syn, fin, push, urg, userIp, flag, hosts, ports, i));
 	}
+	for (int i=0; i<hosts.size(); i++)
+    {
+        tasks[i]->join();
+        delete tasks[i];
+    }
 }
 
 int main(int argc, char *argv[])
@@ -353,8 +350,6 @@ int main(int argc, char *argv[])
     else{
             printf("error\n");
     }
-
-	
 
     return 0;
 }
