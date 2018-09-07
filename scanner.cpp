@@ -320,7 +320,7 @@ void scan(int syn, int fin, int push, int urg, std::string userIp, std::string f
 int main(int argc, char *argv[])
 {
     if (argc < 5) {
-       fprintf(stderr,"usage %s your ip address, hosts.txt, ports.txt, flag(S = syn, F = fin, N = null, X = xmas)\n", argv[0]);
+       fprintf(stderr,"usage %s (your ip address) hosts.txt ports.txt flag(S = syn, F = fin, N = null, X = xmas)\n", argv[0]);
        exit(0);
     }
 
