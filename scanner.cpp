@@ -192,7 +192,7 @@ void scanIP(int i)
 	for (int x = 0; x < PORTS.size(); ++x)
 	{
 		int portNo = stoi(PORTS[x]);
-		MUTEX.lock(); //lock threads from when we create a socket until we close it
+		//MUTEX.lock(); //lock threads from when we create a socket until we close it
 		//Create a raw socket
 		int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
 		int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);   
@@ -280,18 +280,13 @@ void scanIP(int i)
 			received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
 			read_iphdr = (iphdr*) read_buffer;   
 			read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4);
-			if(read_iphdr->saddr != iph->daddr)
+			if(read_iphdr->saddr == iph->daddr)
 			{
 				got_right_package = true;
 				break;
 			}
 			duration = ( std::chrono::steady_clock::now() - start ) /  std::chrono::milliseconds(1);
-		} while(duration < 4000);
-
-		if(read_iphdr->saddr == iph->daddr)
-		{
-			printf("yolo\n");	
-		}
+		} while(duration < 350);
 
 		if( received_bytes < 0 )
 		{
@@ -331,7 +326,7 @@ void scanIP(int i)
 		}
 		close(write_socket);
 		close(read_socket);
-		MUTEX.unlock();
+		//MUTEX.unlock();
 		double f = (double)rand() / RAND_MAX;
 		usleep((0.5 + f) * 1000000);
 	}
