@@ -18,6 +18,8 @@
 #include <arpa/inet.h>
 #include <thread>
 #include <mutex>
+#include <cstdio>
+#include <ctime>
 
 std::mutex MUTEX;
 int SYN;
@@ -174,7 +176,7 @@ void scanIP(int i)
 {
 	/*******************************CREATE IP Header**************************/	
 	struct hostent *server;
-	MUTEX.lock();
+	MUTEX.lock(); //lock threads while we get info from the server
 	server = gethostbyname(HOSTS[i].c_str());
 
 	if (server == NULL) {
@@ -190,8 +192,8 @@ void scanIP(int i)
 	for (int x = 0; x < PORTS.size(); ++x)
 	{
 		int portNo = stoi(PORTS[x]);
+		MUTEX.lock(); //lock threads from when we create a socket until we close it
 		//Create a raw socket
-		MUTEX.lock();
 		int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
 		int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);   
 		
@@ -266,9 +268,25 @@ void scanIP(int i)
 		socklen_t dsize = sizeof(sin);
 		bool done = false;
 		
-		received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
-		iphdr* read_iphdr = (iphdr*) read_buffer;   
-		tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
+		iphdr* read_iphdr;
+		tcphdr* read_tcphdr;
+		
+		auto start = std::chrono::steady_clock::now();
+		int duration;
+		bool got_right_package = false;
+
+		do
+		{
+			received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
+			read_iphdr = (iphdr*) read_buffer;   
+			read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4);
+			if(read_iphdr->saddr != iph->daddr)
+			{
+				got_right_package = true;
+				break;
+			}
+			duration = ( std::chrono::steady_clock::now() - start ) /  std::chrono::milliseconds(1);
+		} while(duration < 4000);
 
 		if(read_iphdr->saddr == iph->daddr)
 		{
@@ -285,7 +303,11 @@ void scanIP(int i)
 		{
 			if(FLAG == "S")
 			{
-				if (read_tcphdr->syn==1)
+				if(!got_right_package)
+				{
+					printf("Port: %d timed out at host: %s\n", portNo, HOSTS[i].c_str());
+				}
+				else if (read_tcphdr->syn==1)
 				{
 					printf("Port: %d open at host: %s\n", portNo, HOSTS[i].c_str());
 				}
@@ -297,7 +319,7 @@ void scanIP(int i)
 			else if(FLAG == "F" || FLAG == "N" || FLAG == "X")
 			{
 				
-				if (read_tcphdr->rst==1)
+				if (read_tcphdr->rst==1 && got_right_package)
 				{
 					printf("Port: %d closed at host: %s\n", portNo, HOSTS[i].c_str());
 				}
