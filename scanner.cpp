@@ -192,7 +192,6 @@ void scanIP(int i)
 	for (int x = 0; x < PORTS.size(); ++x)
 	{
 		int portNo = stoi(PORTS[x]);
-		//MUTEX.lock(); //lock threads from when we create a socket until we close it
 		//Create a raw socket
 		int write_socket = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
 		int read_socket = socket(AF_INET, SOCK_RAW, IPPROTO_TCP);   
@@ -207,10 +206,10 @@ void scanIP(int i)
 		memset (datagram, 0, 4096);
 			
 		//IP header
-		struct iphdr *iph = (struct iphdr *) datagram;
+		struct iphdr *write_iphdr = (struct iphdr *) datagram;
 			
 		//TCP header
-		struct tcphdr *tcph = (struct tcphdr *) (datagram + sizeof (struct ip));
+		struct tcphdr *write_tcphdr = (struct tcphdr *) (datagram + sizeof (struct ip));
 		struct sockaddr_in sin;
 		struct pseudo_header psh;
 		
@@ -226,8 +225,8 @@ void scanIP(int i)
 		sin.sin_port = htons(stoi(PORTS[x]));
 			
 		//Fill in the IP and TCP Header
-		createIp(iph, source_ip, sin, datagram);
-		createTcp(tcph, portNo);
+		createIp(write_iphdr, source_ip, sin, datagram);
+		createTcp(write_tcphdr, portNo);
 		
 		//Now the TCP checksum
 		psh.source_address = inet_addr( source_ip );
@@ -240,9 +239,9 @@ void scanIP(int i)
 		pseudogram = (char*)malloc(psize);
 			
 		memcpy(pseudogram , (char*) &psh , sizeof (struct pseudo_header));
-		memcpy(pseudogram + sizeof(struct pseudo_header) , tcph , sizeof(struct tcphdr));
+		memcpy(pseudogram + sizeof(struct pseudo_header) , write_tcphdr , sizeof(struct tcphdr));
 			
-		tcph->check = csum( (unsigned short*) pseudogram , psize);
+		write_tcphdr->check = csum( (unsigned short*) pseudogram , psize);
 			
 		//IP_HDRINCL to tell the kernel that headers are included in the packet
 		int one = 1;
@@ -257,7 +256,7 @@ void scanIP(int i)
 		setsockopt (read_socket, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&tv,sizeof(struct timeval)) != 0;
 			
 		//Send the packet
-		if (sendto (write_socket, datagram, iph->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
+		if (sendto (write_socket, datagram, write_iphdr->tot_len ,  0, (struct sockaddr *) &sin, sizeof (sin)) < 0)
 		{
 			error("sendto failed");
 		}
@@ -280,7 +279,7 @@ void scanIP(int i)
 			received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
 			read_iphdr = (iphdr*) read_buffer;   
 			read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4);
-			if(read_iphdr->saddr == iph->daddr)
+			if(read_iphdr->saddr == write_iphdr->daddr)
 			{
 				got_right_package = true;
 				break;
@@ -326,7 +325,6 @@ void scanIP(int i)
 		}
 		close(write_socket);
 		close(read_socket);
-		//MUTEX.unlock();
 		double f = (double)rand() / RAND_MAX;
 		usleep((0.5 + f) * 1000000);
 	}
@@ -350,7 +348,7 @@ void scan()
 int main(int argc, char *argv[])
 {
     if (argc < 5) {
-       fprintf(stderr,"usage %s (your ip address) HOSTS.txt PORTS.txt FLAG(S = SYN, F = FIN, N = null, X = xmas)\n", argv[0]);
+       fprintf(stderr,"usage %s (your ip address) hosts.txt ports.txt FLAG(S = SYN, F = FIN, N = null, X = xmas)\n", argv[0]);
        exit(0);
     }
 
