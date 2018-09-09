@@ -349,6 +349,7 @@ int main(int argc, char *argv[])
 {
     if (argc < 5) {
        fprintf(stderr,"usage %s (your ip address) hosts.txt ports.txt FLAG(S = SYN, F = FIN, N = null, X = xmas)\n", argv[0]);
+       fprintf("Example ./scanner 192.168.1.1 hosts.txt ports.txt S\n");
        exit(0);
     }
 
