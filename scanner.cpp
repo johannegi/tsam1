@@ -211,15 +211,15 @@ void scanIP(int i)
 		struct tcphdr *tcph = (struct tcphdr *) (datagram + sizeof (struct ip));
 		struct sockaddr_in sin;
 		struct pseudo_header psh;
-
-		bcopy((char *)addrs.c_str(), 
-				(char *)&sin.sin_addr.s_addr,
-				addrslength);
+		
 			
 		//some address resolution
 		strcpy(source_ip , USERIP.c_str());
 		sin.sin_family = AF_INET;
 		//sin.sin_addr.s_addr = inet_addr (HOSTS[i].c_str());
+		bcopy((char *)addrs.c_str(), 
+				(char *)&sin.sin_addr.s_addr,
+				addrslength);
 
 		sin.sin_port = htons(stoi(PORTS[x]));
 			
@@ -264,10 +264,16 @@ void scanIP(int i)
 		ssize_t received_bytes;
 		usleep(10);
 		socklen_t dsize = sizeof(sin);
+		bool done = false;
 		
 		received_bytes=recv(read_socket, read_buffer , sizeof(read_buffer), 0);
 		iphdr* read_iphdr = (iphdr*) read_buffer;   
 		tcphdr* read_tcphdr = (tcphdr*)(read_buffer + (int)read_iphdr->ihl*4); 
+
+		if(read_iphdr->saddr == iph->daddr)
+		{
+			printf("yolo\n");	
+		}
 
 		if( received_bytes < 0 )
 		{
